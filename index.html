@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smile Score AI - Modern Happiness Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        * {
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #FF6B6B 0%, #4ECDC4 100%);
+            min-height: 100vh;
+        }
+
+        #video {
+            transform: scaleX(-1);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+        }
+
+        .emoji-animation {
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .score-ring {
+            background: conic-gradient(from 0deg, #4ECDC4 var(--percentage), rgba(255, 255, 255, 0.2) var(--percentage));
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .score-ring::before {
+            content: '';
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="gradient-bg flex items-center justify-center p-4">
+    <div class="glass p-8 max-w-md w-full">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-white mb-2">Smile Score <span class="emoji-animation inline-block">😊</span></h1>
+            <p class="text-white/80">Real-time happiness detector</p>
+        </div>
+        
+        <div class="relative mb-8">
+            <video id="video" class="w-full" autoplay muted></video>
+            <canvas id="overlay" class="absolute top-0 left-0 w-full h-full"></canvas>
+            <div class="absolute top-4 right-4 glass px-3 py-1">
+                <i class="bi bi-camera-video-fill text-white"></i>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center glass p-6">
+            <h2 class="text-xl font-semibold text-white mb-4">Happiness Level</h2>
+            <div class="score-ring mb-4" style="--percentage: 0%">
+                <div id="score" class="text-3xl font-bold text-white relative">0%</div>
+            </div>
+            <div id="message" class="text-white/80 text-center">Start smiling to see your score!</div>
+        </div>
+
+        <button id="startBtn" class="mt-6 w-full glass py-4 px-6 text-white font-semibold hover:bg-white/20 transition-all flex items-center justify-center gap-2">
+            <i class="bi bi-camera"></i>
+            Start Camera
+        </button>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('startBtn');
+        const scoreDisplay = document.getElementById('score');
+        const scoreRing = document.querySelector('.score-ring');
+        const messageEl = document.getElementById('message');
+
+        // Load face-api models
+        Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+            faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
+        ]).then(startButton);
+
+        function startButton() {
+            startBtn.addEventListener('click', startVideo);
+        }
+
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                video.srcObject = stream;
+                startBtn.style.display = 'none';
+                detectExpressions();
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                messageEl.textContent = "Camera access denied. Please check your permissions!";
+                messageEl.classList.add('text-red-400');
+            }
+        }
+
+        function updateScoreDisplay(score) {
+            scoreDisplay.textContent = `${score}%`;
+            scoreRing.style.setProperty('--percentage', `${score}%`);
+            
+            if (score < 20) {
+                messageEl.textContent = "Come on, give us a smile! 😊";
+            } else if (score < 50) {
+                messageEl.textContent = "Getting there! Keep smiling! 😃";
+            } else if (score < 80) {
+                messageEl.textContent = "Great smile! 🌟";
+            } else {
+                messageEl.textContent = "Perfect happiness! ✨";
+            }
+        }
+
+        async function detectExpressions() {
+            const canvas = faceapi.createCanvasFromMedia(video);
+            overlay.appendChild(canvas);
+            const displaySize = { width: video.width, height: video.height };
+            faceapi.matchDimensions(canvas, displaySize);
+            
+            setInterval(async () => {
+                const detections = await faceapi.detectSingleFace(
+                    video,
+                    new faceapi.TinyFaceDetectorOptions()
+                ).withFaceExpressions();
+
+                if (detections) {
+                    const score = Math.round(detections.expressions.happy * 100);
+                    updateScoreDisplay(score);
+
+                    // Draw face detection with smoother animation
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                    faceapi.draw.drawDetections(canvas, resizedDetections);
+                }
+            }, 100);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (overlay.firstChild) {
+                overlay.firstChild.width = video.width;
+                overlay.firstChild.height = video.height;
+            }
+        });
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
